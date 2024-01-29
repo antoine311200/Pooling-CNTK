@@ -1,0 +1,21 @@
+import pickle
+import numpy as np
+
+def load_data():
+    f = open('data/data_batch_1', 'rb')
+    datadict = pickle.load(f, encoding='bytes')
+    f.close()
+
+    # Load and reshape data
+    X = datadict[b'data'].reshape(-1, 3, 32, 32)
+    Y = datadict[b'labels']
+
+    # Normalize
+    X = X.astype("float")
+    X /= 255.0
+
+    # Standardize
+    mean = np.mean(X, axis=(0, 2, 3))
+    std = np.std(X, axis=(0, 2, 3))
+    X = (X - mean[:, None, None]) / std[:, None, None]
+    return X, Y
