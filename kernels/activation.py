@@ -47,7 +47,7 @@ class FastReLU:
         self.trans_blocks = (32, 32, 16)
         self.trans_threads = (8, 8)
 
-    def __call__(self, sigma, H, coef1=None, coef2=None):
+    def __call__(self, sigma_, H_, coef1=None, coef2=None):
         """Apply the activation function to the input
 
         Args:
@@ -61,8 +61,8 @@ class FastReLU:
         """
         # Convolution blocks and threads
 
-        sigma = cp.asarray(sigma).copy()
-        H = cp.asarray(H).copy()
+        sigma = sigma_.copy()
+        H = H_.copy()
 
         if coef1 is None or coef2 is None:
             coef = cp.sqrt(cp.diag(sigma.reshape(1024, 1024)).reshape(32, 32))

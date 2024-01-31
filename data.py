@@ -18,4 +18,8 @@ def load_data():
     mean = np.mean(X, axis=(0, 2, 3))
     std = np.std(X, axis=(0, 2, 3))
     X = (X - mean[:, None, None]) / std[:, None, None]
+
+    X = np.array(X)
+    Y = np.array(Y)
+
     return X, Y

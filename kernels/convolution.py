@@ -48,10 +48,10 @@ class Convolution4D:
         self.conv_blocks = (63, 63)
         self.conv_threads = (32, 32)
 
-    def __call__(self, input):
+    def __call__(self, input_):
         # Convolution blocks and threads
 
-        input = cp.asarray(input)
+        input = input_.copy()
         output = cp.zeros_like(input)
 
         self.compiled_kernel(self.conv_blocks, self.conv_threads, (input, output))
