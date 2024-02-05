@@ -16,16 +16,15 @@ relu = FastReLU()
 final_layers = {"vanilla": Vanilla(), "gap": GlobbalAveragePooling()}
 
 
-def compute_sigma(sample, depth):
+def compute_sigma(sample, depth, fix_layer=False):
     coefs, inv_coefs = [1.0], [1.0]
 
     sigma = cp.einsum("cij,ckl->ijkl", sample, sample)
-    print(sigma)
     conv.compiled_kernel(conv.conv_blocks, conv.conv_threads, (sigma,sigma))
 
-    print(sigma)
-
-    theta = sigma.copy()
+    theta = cp.zeros((32, 32, 32, 32), dtype=cp.float32)
+    if fix_layer:
+        theta = sigma.copy()
 
     for d in range(1, depth):
         K, K_dot, coef = relu(sigma, theta)
@@ -39,11 +38,13 @@ def compute_sigma(sample, depth):
 
     return coefs, inv_coefs
 
-def compute_cross_sigma(sample1, sample2, coefs1, coefs2, depth):
+def compute_cross_sigma(sample1, sample2, coefs1, coefs2, depth, fix_layer=False):
     sigma = cp.einsum("cij,ckl->ijkl", sample1, sample2)
     sigma = conv(sigma)
 
-    theta = sigma.copy()
+    theta = cp.zeros((32, 32, 32, 32), dtype=cp.float32)
+    if fix_layer:
+        theta = sigma.copy()
 
     for d in range(1, depth):
         K, K_dot = relu(sigma, theta, coefs1[d], coefs2[d])
@@ -78,7 +79,7 @@ class ConvNTK:
         - max: Max Pooling layer
     """
 
-    def __init__(self, depth=10, final_layer_name="vanilla", verbose=True):
+    def __init__(self, depth=10, final_layer_name="vanilla", fix_layer=True, verbose=True):
         """Initialize the ConvNTK class.
 
         The initialisation phase will preprocess the kernel by computing the
@@ -88,6 +89,7 @@ class ConvNTK:
             depth (int): The depth of the convolutional layers.
         """
         self.depth = depth
+        self.fix_layer = fix_layer
         self.final_layer_name = final_layer_name
 
         self.verbose = verbose
@@ -128,7 +130,6 @@ class ConvNTK:
         """
         self.test_samples = cp.asarray(test_samples)
         self.test_labels = test_labels
-        self.test_labels_encoded = encode_labels(self.test_labels)
 
         if self.verbose: print("Evaluating the network...")
 
@@ -142,7 +143,11 @@ class ConvNTK:
         predictions = np.dot(self.test_kernel.get().T, self.network)
         predictions = np.argmax(predictions, axis=1)
 
-        return np.mean(predictions == self.test_labels_encoded)
+        if self.verbose:
+            print("Predictions: ", predictions)
+            print("True labels: ", self.test_labels)
+
+        return np.mean(predictions == self.test_labels)
 
 
     def _compute_kernel(self, samples, coefs, samples2=None, coefs2=None):
@@ -160,7 +165,7 @@ class ConvNTK:
         for i, sample1 in tqdm(enumerate(samples), total=len(samples)):
             for j, sample2 in enumerate(samples2):
                 features = compute_cross_sigma(
-                    sample1, sample2, coefs[i], coefs2[j], self.depth
+                    sample1, sample2, coefs[i], coefs2[j], self.depth, self.fix_layer
                 )
                 kernel[i, j] = final_layers[self.final_layer_name](features)
 
@@ -176,10 +181,7 @@ class ConvNTK:
         for sample in samples:
             sample = cp.asarray(sample)
 
-            coefs, inv_coefs = compute_sigma(sample, self.depth)
-
-            print(coefs)
-            sys.exit()
+            coefs, inv_coefs = compute_sigma(sample, self.depth, self.fix_layer)
 
             all_coefs.append(coefs)
             all_inv_coefs.append(inv_coefs)
