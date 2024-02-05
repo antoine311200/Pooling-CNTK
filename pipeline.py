@@ -2,6 +2,7 @@ import cupy as cp
 import numpy as np
 
 from tqdm import tqdm
+import argparse
 
 from kernels.utils import (
     Conv,
@@ -55,6 +56,7 @@ def compute_cross_sigma(
     depth,
     fix=False,
     gap=False,
+    max_pool=False,
 ):
 
     S = cp.matmul(sample1.T, sample2).reshape(32, 32, 32, 32)
@@ -80,7 +82,7 @@ def compute_cross_sigma(
 
     if fix:
         T -= S
-    return cp.mean(T) if gap else cp.trace(T.reshape(1024, 1024))
+    return cp.mean(T) if gap else cp.max(T) if max_pool else cp.trace(T.reshape(1024, 1024))
 
 def encode_labels(labels):
     targets = np.ones((len(labels), 10)) * -0.1
@@ -90,10 +92,20 @@ def encode_labels(labels):
     return targets
 
 if __name__ == "__main__":
+
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("--depth", type=int, default=5)
+    argparser.add_argument("--gap", action="store_true")
+    argparser.add_argument("--max_pool", action="store_true")
+    argparser.add_argument("--fix", action="store_true")
+    argparser.add_argument("--n_samples", type=int, default=100)
+    args = argparser.parse_args()
+
     X, Y = load_data()
-    # Keep only the first 1000 samples
-    X = X[:100]
-    Y = Y[:100]
+
+    X = X[:min(args.n_samples, X.shape[0])]
+    Y = Y[:min(args.n_samples, Y.shape[0])]
+
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2)
 
     print("X_train shape: ", X_train.shape)
@@ -102,17 +114,23 @@ if __name__ == "__main__":
     X_train = cp.asarray(X_train).reshape(-1, 3, 1024)
     X_test = cp.asarray(X_test).reshape(-1, 3, 1024)
 
-    depth = 5
+    depth = args.depth
+    gap = args.gap
+    max_pool = args.max_pool
+    fix = args.fix
+
+    if gap and max_pool:
+        raise ValueError("Cannot use both gap and max_pool")
 
     train_coefs, train_inv_coefs = [], []
     for sample in tqdm(X_train):
-        coefs, inv_coefs = compute_sigma(sample, depth, fix=True)
+        coefs, inv_coefs = compute_sigma(sample, depth, fix=fix)
         train_coefs.append(coefs)
         train_inv_coefs.append(inv_coefs)
 
     test_coefs, test_inv_coefs = [], []
     for sample in tqdm(X_test):
-        coefs, inv_coefs = compute_sigma(sample, depth, fix=True)
+        coefs, inv_coefs = compute_sigma(sample, depth, fix=fix)
         test_coefs.append(coefs)
         test_inv_coefs.append(inv_coefs)
 
@@ -121,7 +139,7 @@ if __name__ == "__main__":
     for i, sample1 in tqdm(enumerate(X_train), total=len(X_train)):
         for j, sample2 in enumerate(X_train):
             train_kernel[i, j] = compute_cross_sigma(
-                sample1, sample2, train_coefs[i], train_coefs[j], train_inv_coefs[i], train_inv_coefs[j], depth, gap=True
+                sample1, sample2, train_coefs[i], train_coefs[j], train_inv_coefs[i], train_inv_coefs[j], depth, gap=gap, max_pool=max_pool
             )
 
     test_kernel = np.zeros((len(X_test), len(X_train)))
@@ -129,12 +147,12 @@ if __name__ == "__main__":
     for i, sample1 in tqdm(enumerate(X_test), total=len(X_test)):
         for j, sample2 in enumerate(X_train):
             test_kernel[i, j] = compute_cross_sigma(
-                sample1, sample2, test_coefs[i], train_coefs[j], test_inv_coefs[i], train_inv_coefs[j], depth, gap=True
+                sample1, sample2, test_coefs[i], train_coefs[j], test_inv_coefs[i], train_inv_coefs[j], depth, gap=gap, max_pool=max_pool
             )
 
     Y_train = encode_labels(Y_train)
 
-    print(Y_test)
+    # print(Y_test)
 
     network = np.linalg.solve(train_kernel, Y_train)
 
@@ -147,5 +165,5 @@ if __name__ == "__main__":
     accuracy = np.mean(predictions == Y_test)
 
     print("Accuracy: ", accuracy)
-    print("Predictions: ", predictions)
-    print("Y_test: ", Y_test)
+    # print("Predictions: ", predictions)
+    # print("Y_test: ", Y_test)
