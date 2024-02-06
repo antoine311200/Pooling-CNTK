@@ -94,12 +94,7 @@ def encode_labels(labels):
 if __name__ == "__main__":
 
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("--depth", type=int, default=5)
-    argparser.add_argument("--gap", action="store_true")
-    argparser.add_argument("--max_pool", action="store_true")
-    argparser.add_argument("--fix", action="store_true")
     argparser.add_argument("--n_samples", type=int, default=100)
-    argparser.add_argument("--save", action="store_true")
     args = argparser.parse_args()
 
     X, Y = load_data()
@@ -117,61 +112,64 @@ if __name__ == "__main__":
     X_test = cp.asarray(X_test).reshape(-1, 3, 1024)
     Y_train = encode_labels(Y_train)
 
-    depth = args.depth
-    gap = args.gap
-    max_pool = args.max_pool
-    fix = args.fix
+    for depth in [2, 5, 8, 10, 15, 30, 50]:
+        for gap in [True, False]:
+            for max_pool in [True, False]:
+                for fix in [True, False]:
+                    if gap and max_pool:
+                        continue
+                    print(f"Depth: {depth}, gap: {gap}, max_pool: {max_pool}, fix: {fix}")
 
-    if gap and max_pool:
-        raise ValueError("Cannot use both gap and max_pool")
+                    if gap and max_pool:
+                        raise ValueError("Cannot use both gap and max_pool")
 
-    train_coefs, train_inv_coefs = [], []
-    for i, sample in enumerate(X_train):
-        coefs, inv_coefs = compute_sigma(sample, depth, fix=fix)
-        train_coefs.append(coefs)
-        train_inv_coefs.append(inv_coefs)
-        if i % 10 == 0:
-            print(f"Train coefs: {i/len(X_train)*100:.2f}%", end="\r")
+                    train_coefs, train_inv_coefs = [], []
+                    for i, sample in enumerate(X_train):
+                        coefs, inv_coefs = compute_sigma(sample, depth, fix=fix)
+                        train_coefs.append(coefs)
+                        train_inv_coefs.append(inv_coefs)
+                        if i % 10 == 0:
+                            print(f"Train coefs: {i/len(X_train)*100:.2f}%", end="\r")
 
 
-    test_coefs, test_inv_coefs = [], []
-    for i, sample in enumerate(X_test):
-        coefs, inv_coefs = compute_sigma(sample, depth, fix=fix)
-        test_coefs.append(coefs)
-        test_inv_coefs.append(inv_coefs)
-        if i % 10 == 0:
-            print(f"Test coefs: {i/len(X_test)*100:.2f}%", end="\r")
+                    test_coefs, test_inv_coefs = [], []
+                    for i, sample in enumerate(X_test):
+                        coefs, inv_coefs = compute_sigma(sample, depth, fix=fix)
+                        test_coefs.append(coefs)
+                        test_inv_coefs.append(inv_coefs)
+                        if i % 10 == 0:
+                            print(f"Test coefs: {i/len(X_test)*100:.2f}%", end="\r")
 
-    train_kernel = np.zeros((len(X_train), len(X_train)))
+                    train_kernel = np.zeros((len(X_train), len(X_train)))
 
-    for i, sample1 in enumerate(X_train):
-        for j, sample2 in enumerate(X_train):
-            train_kernel[i, j] = compute_cross_sigma(
-                sample1, sample2, train_coefs[i], train_coefs[j], train_inv_coefs[i], train_inv_coefs[j], depth, gap=gap, max_pool=max_pool
-            )
-        if i % 10 == 0:
-            print(f"Train kernel: {i/len(X_train)*100:.2f}%", end="\r")
+                    for i, sample1 in enumerate(X_train):
+                        for j, sample2 in enumerate(X_train):
+                            train_kernel[i, j] = compute_cross_sigma(
+                                sample1, sample2, train_coefs[i], train_coefs[j], train_inv_coefs[i], train_inv_coefs[j], depth, gap=gap, max_pool=max_pool
+                            )
+                        if i % 10 == 0:
+                            print(f"Train kernel: {i/len(X_train)*100:.2f}%", end="\r")
 
-    test_kernel = np.zeros((len(X_test), len(X_train)))
+                    test_kernel = np.zeros((len(X_test), len(X_train)))
 
-    for i, sample1 in enumerate(X_test):
-        for j, sample2 in enumerate(X_train):
-            test_kernel[i, j] = compute_cross_sigma(
-                sample1, sample2, test_coefs[i], train_coefs[j], test_inv_coefs[i], train_inv_coefs[j], depth, gap=gap, max_pool=max_pool
-            )
-        if i % 10 == 0:
-            print(f"Test kernel: {i/len(X_test)*100:.2f}%", end="\r")
+                    for i, sample1 in enumerate(X_test):
+                        for j, sample2 in enumerate(X_train):
+                            test_kernel[i, j] = compute_cross_sigma(
+                                sample1, sample2, test_coefs[i], train_coefs[j], test_inv_coefs[i], train_inv_coefs[j], depth, gap=gap, max_pool=max_pool
+                            )
+                        if i % 10 == 0:
+                            print(f"Test kernel: {i/len(X_test)*100:.2f}%", end="\r")
 
-    network = np.linalg.solve(train_kernel, Y_train)
+                    network = np.linalg.solve(train_kernel, Y_train)
 
-    predictions = np.matmul(test_kernel, network)
-    predictions = np.argmax(predictions, axis=1)
-    accuracy = np.mean(predictions == Y_test)
+                    predictions = np.matmul(test_kernel, network)
+                    predictions = np.argmax(predictions, axis=1)
+                    accuracy = np.mean(predictions == Y_test)
 
-    if args.save:
-        if not os.path.exists("results.txt"):
-            with open(f"results.txt", "w") as f:
-                f.write("depth, gap, max_pool, fix, n_samples, accuracy\n")
+                    if not os.path.exists("results.txt"):
+                        with open(f"results.txt", "w") as f:
+                            f.write("depth, gap, max_pool, fix, n_samples, accuracy\n")
 
-        with open(f"results.txt", "a") as f:
-            f.write(f"{depth}, {gap}, {max_pool}, {fix}, {n_samples}, {accuracy}\n")
+                    with open(f"results.txt", "a") as f:
+                        f.write(f"{depth}, {gap}, {max_pool}, {fix}, {n_samples}, {accuracy}\n")
+                    print(f"Accuracy: {accuracy}")
