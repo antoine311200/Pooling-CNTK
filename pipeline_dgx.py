@@ -99,7 +99,7 @@ if __name__ == "__main__":
 
     X, Y = load_data()
 
-    n_samples = min(args.n_samples, X.shape[0])
+    n_samples = int(min(args.n_samples, X.shape[0]))
     X = X[:n_samples]
     Y = Y[:n_samples]
 
@@ -111,6 +111,8 @@ if __name__ == "__main__":
     X_train = cp.asarray(X_train).reshape(-1, 3, 1024)
     X_test = cp.asarray(X_test).reshape(-1, 3, 1024)
     Y_train = encode_labels(Y_train)
+
+    save_file = f"results_{n_samples}.txt"
 
     for depth in [2, 5, 8, 10, 15, 30, 50]:
         for gap in [True, False]:
@@ -166,10 +168,10 @@ if __name__ == "__main__":
                     predictions = np.argmax(predictions, axis=1)
                     accuracy = np.mean(predictions == Y_test)
 
-                    if not os.path.exists("results.txt"):
-                        with open(f"results.txt", "w") as f:
+                    if not os.path.exists(save_file):
+                        with open(save_file, "w") as f:
                             f.write("depth, gap, max_pool, fix, n_samples, accuracy\n")
 
-                    with open(f"results.txt", "a") as f:
+                    with open(save_file, "a") as f:
                         f.write(f"{depth}, {gap}, {max_pool}, {fix}, {n_samples}, {accuracy}\n")
                     print(f"Accuracy: {accuracy}")
