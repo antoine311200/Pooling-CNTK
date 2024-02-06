@@ -4,6 +4,8 @@ import numpy as np
 from tqdm import tqdm
 import argparse
 
+import matplotlib.pyplot as plt
+
 from kernels.utils import (
     Conv,
     conv_blocks,
@@ -113,57 +115,65 @@ if __name__ == "__main__":
 
     X_train = cp.asarray(X_train).reshape(-1, 3, 1024)
     X_test = cp.asarray(X_test).reshape(-1, 3, 1024)
+    Y_train = encode_labels(Y_train)
 
-    depth = args.depth
+    # depth = args.depth
     gap = args.gap
     max_pool = args.max_pool
     fix = args.fix
 
-    if gap and max_pool:
-        raise ValueError("Cannot use both gap and max_pool")
+    accuracies = []
 
-    train_coefs, train_inv_coefs = [], []
-    for sample in tqdm(X_train):
-        coefs, inv_coefs = compute_sigma(sample, depth, fix=fix)
-        train_coefs.append(coefs)
-        train_inv_coefs.append(inv_coefs)
+    for depth in [2, 5, 8, 10, 15]:
 
-    test_coefs, test_inv_coefs = [], []
-    for sample in tqdm(X_test):
-        coefs, inv_coefs = compute_sigma(sample, depth, fix=fix)
-        test_coefs.append(coefs)
-        test_inv_coefs.append(inv_coefs)
+        if gap and max_pool:
+            raise ValueError("Cannot use both gap and max_pool")
 
-    train_kernel = np.zeros((len(X_train), len(X_train)))
+        train_coefs, train_inv_coefs = [], []
+        for sample in tqdm(X_train):
+            coefs, inv_coefs = compute_sigma(sample, depth, fix=fix)
+            train_coefs.append(coefs)
+            train_inv_coefs.append(inv_coefs)
 
-    for i, sample1 in tqdm(enumerate(X_train), total=len(X_train)):
-        for j, sample2 in enumerate(X_train):
-            train_kernel[i, j] = compute_cross_sigma(
-                sample1, sample2, train_coefs[i], train_coefs[j], train_inv_coefs[i], train_inv_coefs[j], depth, gap=gap, max_pool=max_pool
-            )
+        test_coefs, test_inv_coefs = [], []
+        for sample in tqdm(X_test):
+            coefs, inv_coefs = compute_sigma(sample, depth, fix=fix)
+            test_coefs.append(coefs)
+            test_inv_coefs.append(inv_coefs)
 
-    test_kernel = np.zeros((len(X_test), len(X_train)))
+        train_kernel = np.zeros((len(X_train), len(X_train)))
 
-    for i, sample1 in tqdm(enumerate(X_test), total=len(X_test)):
-        for j, sample2 in enumerate(X_train):
-            test_kernel[i, j] = compute_cross_sigma(
-                sample1, sample2, test_coefs[i], train_coefs[j], test_inv_coefs[i], train_inv_coefs[j], depth, gap=gap, max_pool=max_pool
-            )
+        for i, sample1 in tqdm(enumerate(X_train), total=len(X_train)):
+            for j, sample2 in enumerate(X_train):
+                train_kernel[i, j] = compute_cross_sigma(
+                    sample1, sample2, train_coefs[i], train_coefs[j], train_inv_coefs[i], train_inv_coefs[j], depth, gap=gap, max_pool=max_pool
+                )
 
-    Y_train = encode_labels(Y_train)
+        test_kernel = np.zeros((len(X_test), len(X_train)))
 
-    # print(Y_test)
+        for i, sample1 in tqdm(enumerate(X_test), total=len(X_test)):
+            for j, sample2 in enumerate(X_train):
+                test_kernel[i, j] = compute_cross_sigma(
+                    sample1, sample2, test_coefs[i], train_coefs[j], test_inv_coefs[i], train_inv_coefs[j], depth, gap=gap, max_pool=max_pool
+                )
 
-    network = np.linalg.solve(train_kernel, Y_train)
 
-    print("Network shape: ", network.shape)
-    print("Train kernel shape: ", train_kernel.shape)
-    print("Test kernel shape: ", test_kernel.shape)
+        # print(Y_test)
 
-    predictions = np.matmul(test_kernel, network)
-    predictions = np.argmax(predictions, axis=1)
-    accuracy = np.mean(predictions == Y_test)
+        network = np.linalg.solve(train_kernel, Y_train)
 
-    print("Accuracy: ", accuracy)
-    # print("Predictions: ", predictions)
-    # print("Y_test: ", Y_test)
+        print("Network shape: ", network.shape)
+        print("Train kernel shape: ", train_kernel.shape)
+        print("Test kernel shape: ", test_kernel.shape)
+
+        predictions = np.matmul(test_kernel, network)
+        predictions = np.argmax(predictions, axis=1)
+        accuracy = np.mean(predictions == Y_test)
+
+        print("Accuracy: ", accuracy)
+        # print("Predictions: ", predictions)
+        # print("Y_test: ", Y_test)
+
+        accuracies.append(accuracy)
+
+    print("Accuracies: ", accuracies)

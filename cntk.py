@@ -23,7 +23,7 @@ def compute_sigma(sample, depth, fix_layer=False):
     conv.compiled_kernel(conv.conv_blocks, conv.conv_threads, (sigma,sigma))
 
     theta = cp.zeros((32, 32, 32, 32), dtype=cp.float32)
-    if fix_layer:
+    if not fix_layer:
         theta = sigma.copy()
 
     for d in range(1, depth):
